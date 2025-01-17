@@ -1,6 +1,6 @@
-from mlxtend.frequent_patterns import apriori, fpgrowth, association_rules
+from mlxtend.frequent_patterns import apriori, fpgrowth, association_rules # type: ignore
 from io import BytesIO
-import pandas as pd
+import pandas as pd # type: ignore
 import streamlit as st
 
 # Judul aplikasi
