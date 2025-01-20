@@ -1,6 +1,6 @@
 streamlit 
 pandas==2.2.3  
-mlxtend==0.5.1  
+mlxtend==0.21.0
 openpyxl==3.1.5  
 numpy==2.2.2
 blinker==1.9.0
