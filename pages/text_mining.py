@@ -6,30 +6,28 @@ from sklearn.model_selection import train_test_split
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.naive_bayes import MultinomialNB
 from sklearn.svm import LinearSVC
-from sklearn.metrics import classification_report, accuracy_score
+from sklearn.metrics import classification_report, accuracy_score, confusion_matrix
 from collections import Counter
 from io import BytesIO
 import nltk
 from nltk.corpus import stopwords
 from wordcloud import WordCloud
 import matplotlib.pyplot as plt
+import seaborn as sns
 
-# Download stopwords jika belum ada
+# Download stopwords jika belum
 try:
     stopwords_ind = set(stopwords.words('indonesian'))
 except LookupError:
     nltk.download('stopwords')
     stopwords_ind = set(stopwords.words('indonesian'))
 
-st.title("Text Mining: Klasifikasi Sentimen dan WordCloud")
+st.set_page_config(page_title="Text Mining", layout="wide")
+st.title("Text Mining: Klasifikasi Sentimen & Visualisasi Tokoh Politik")
 
-# Pilih algoritma
 algoritma = st.sidebar.selectbox("Pilih Algoritma:", ["SVM", "Naive Bayes"])
-
-# Upload file
 uploaded_file = st.file_uploader("Unggah file Excel dengan kolom teks:", type=["xlsx"])
 
-# Fungsi preprocessing
 def clean_text(text):
     text = text.lower()
     text = re.sub(r'\d+', '', text)
@@ -39,7 +37,6 @@ def clean_text(text):
     tokens = [word for word in tokens if word not in stopwords_ind]
     return " ".join(tokens)
 
-# Fungsi label otomatis
 def label_sentimen(teks):
     kata_positif = [
         'baik', 'bagus', 'senang', 'puas', 'mantap', 'luar biasa', 'cepat', 'menyenangkan',
@@ -64,7 +61,6 @@ def label_sentimen(teks):
     else:
         return "netral"
 
-# Fungsi download
 def convert_df_to_excel(df):
     output = BytesIO()
     with pd.ExcelWriter(output, engine='openpyxl') as writer:
@@ -80,14 +76,12 @@ if uploaded_file:
     df = df[[text_col]].dropna()
     df.columns = ["teks"]
 
-    # Preprocessing dan label otomatis
     df["teks_bersih"] = df["teks"].apply(clean_text)
     df["label"] = df["teks_bersih"].apply(label_sentimen)
 
-    st.subheader("Data Setelah Preprocessing dan Label Otomatis:")
+    st.subheader("Data Setelah Preprocessing dan Labeling:")
     st.write(df)
 
-    # Unduh data
     st.download_button(
         label="Unduh Data dengan Label",
         data=convert_df_to_excel(df),
@@ -95,57 +89,82 @@ if uploaded_file:
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
 
-    # Distribusi label
-    st.subheader("Distribusi Label Sebelum Balancing:")
-    label_counts = df["label"].value_counts()
-    st.write(label_counts)
-    st.bar_chart(label_counts)
+    # 📊 Pie Chart Sentimen Masyarakat
+    st.subheader("Grafik Sentimen Masyarakat")
+    sentimen_counts = df["label"].value_counts()
+    fig1, ax1 = plt.subplots()
+    ax1.pie(sentimen_counts, labels=sentimen_counts.index, autopct='%1.1f%%', startangle=90)
+    ax1.axis('equal')
+    st.pyplot(fig1)
 
-    if len(label_counts) < 2:
-        st.warning("Label terlalu sedikit atau tidak ada variasi. Pastikan data mencakup kata negatif dan positif.")
+    # 📊 Sentimen per Tokoh
+    st.subheader("Grafik Sentimen Terhadap Tokoh Politik")
+    tokoh = ['zul uhel', 'iqbal', 'dinda', 'rohim', 'firin']
+    tokoh_sentimen = {t: {"positif": 0, "negatif": 0, "netral": 0} for t in tokoh}
+
+    for i, row in df.iterrows():
+        teks = row["teks_bersih"]
+        label = row["label"]
+        for t in tokoh:
+            if t in teks:
+                tokoh_sentimen[t][label] += 1
+
+    df_tokoh = pd.DataFrame(tokoh_sentimen).T
+    st.bar_chart(df_tokoh)
+
+    # 📊 Distribusi label
+    st.subheader("Distribusi Label Sebelum Balancing:")
+    st.write(sentimen_counts)
+    st.bar_chart(sentimen_counts)
+
+    if len(sentimen_counts) < 2:
+        st.warning("Label terlalu sedikit atau tidak ada variasi.")
     else:
-        # Balancing (undersampling)
-        min_count = label_counts.min()
+        min_count = sentimen_counts.min()
         df_balanced = df.groupby("label").apply(lambda x: x.sample(min_count, random_state=42)).reset_index(drop=True)
 
         st.subheader("Distribusi Label Setelah Balancing:")
-        balanced_counts = df_balanced["label"].value_counts()
-        st.write(balanced_counts)
-        st.bar_chart(balanced_counts)
+        st.write(df_balanced["label"].value_counts())
+        st.bar_chart(df_balanced["label"].value_counts())
 
-        # TF-IDF
         vectorizer = TfidfVectorizer()
         X = vectorizer.fit_transform(df_balanced["teks_bersih"])
         y = df_balanced["label"]
 
-        st.subheader("Contoh Hasil TF-IDF:")
+        st.subheader("Contoh TF-IDF:")
         tfidf_df = pd.DataFrame(X.toarray(), columns=vectorizer.get_feature_names_out())
         st.write(tfidf_df.head())
 
-        # Split data
         X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
-        # Train model
         model = MultinomialNB() if algoritma == "Naive Bayes" else LinearSVC()
         model.fit(X_train, y_train)
         y_pred = model.predict(X_test)
 
-        # Evaluasi
         st.subheader("Evaluasi Model:")
         st.write(f"Akurasi: {accuracy_score(y_test, y_pred):.2f}")
         st.text("Classification Report:")
         st.text(classification_report(y_test, y_pred))
 
-        # WordCloud global
+        # Confusion Matrix
+        st.subheader("Confusion Matrix:")
+        cm = confusion_matrix(y_test, y_pred, labels=model.classes_)
+        fig_cm, ax_cm = plt.subplots()
+        sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', xticklabels=model.classes_, yticklabels=model.classes_, ax=ax_cm)
+        ax_cm.set_xlabel("Predicted")
+        ax_cm.set_ylabel("Actual")
+        st.pyplot(fig_cm)
+
+        # WordCloud Global
         st.subheader("WordCloud Keseluruhan:")
         all_text = " ".join(df["teks_bersih"])
         wordcloud = WordCloud(width=800, height=400, background_color='white').generate(all_text)
-        fig, ax = plt.subplots(figsize=(10, 5))
-        ax.imshow(wordcloud, interpolation='bilinear')
-        ax.axis("off")
-        st.pyplot(fig)
+        fig_wc, ax_wc = plt.subplots()
+        ax_wc.imshow(wordcloud, interpolation='bilinear')
+        ax_wc.axis("off")
+        st.pyplot(fig_wc)
 
-        # # WordCloud per label
+        # # WordCloud per Label
         # st.subheader("WordCloud per Label:")
         # for label in df["label"].unique():
         #     st.markdown(f"**Label: {label}**")
