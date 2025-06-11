@@ -6,7 +6,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.naive_bayes import MultinomialNB
 from sklearn.svm import LinearSVC
-from sklearn.metrics import classification_report, accuracy_score, confusion_matrix
+from sklearn.metrics import classification_report, accuracy_score, confusion_matrix, precision_score, recall_score, f1_score, accuracy_score
 from collections import Counter
 from io import BytesIO
 import nltk
@@ -14,6 +14,8 @@ from nltk.corpus import stopwords
 from wordcloud import WordCloud
 import matplotlib.pyplot as plt
 import seaborn as sns
+import streamlit_shadcn_ui as ui
+from local_components import card_container
 
 # Download stopwords jika belum
 try:
@@ -88,18 +90,18 @@ if uploaded_file:
         file_name="data_label_otomatis.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
-
-    # 📊 Pie Chart Sentimen Masyarakat
     st.subheader("Grafik Sentimen Masyarakat")
-    sentimen_counts = df["label"].value_counts()
-    fig1, ax1 = plt.subplots()
-    ax1.pie(sentimen_counts, labels=sentimen_counts.index, autopct='%1.1f%%', startangle=90)
-    ax1.axis('equal')
-    st.pyplot(fig1)
+    with card_container(key="Pie"):
+        st.subheader("Grafik Sentimen Masyarakat")
+        sentimen_counts = df["label"].value_counts()
+        fig1, ax1 = plt.subplots(figsize=(13, 5))
+        ax1.pie(sentimen_counts, labels=sentimen_counts.index, autopct='%1.1f%%', startangle=90)
+        ax1.axis('equal')
+        st.pyplot(fig1)
 
     # 📊 Sentimen per Tokoh
     st.subheader("Grafik Sentimen Terhadap Tokoh Politik")
-    tokoh = ['zul uhel', 'iqbal', 'dinda', 'rohim', 'firin']
+    tokoh = ['rohim', 'firin', 'zul', 'uhel', 'iqbal', 'dinda']
     tokoh_sentimen = {t: {"positif": 0, "negatif": 0, "netral": 0} for t in tokoh}
 
     for i, row in df.iterrows():
@@ -111,27 +113,33 @@ if uploaded_file:
 
     df_tokoh = pd.DataFrame(tokoh_sentimen).T
     st.bar_chart(df_tokoh)
+    col1, col2 = st.columns(2)
 
+    with col1:
+        st.subheader("Distribusi Label Sebelum Balancing:")
+        with card_container(key="Distribusi Label"):
     # 📊 Distribusi label
-    st.subheader("Distribusi Label Sebelum Balancing:")
-    st.write(sentimen_counts)
-    st.bar_chart(sentimen_counts)
+            st.subheader("Distribusi Label Sebelum Balancing:")
+    # st.write(sentimen_counts)
+            st.bar_chart(sentimen_counts)
 
     if len(sentimen_counts) < 2:
         st.warning("Label terlalu sedikit atau tidak ada variasi.")
     else:
         min_count = sentimen_counts.min()
         df_balanced = df.groupby("label").apply(lambda x: x.sample(min_count, random_state=42)).reset_index(drop=True)
-
-        st.subheader("Distribusi Label Setelah Balancing:")
-        st.write(df_balanced["label"].value_counts())
-        st.bar_chart(df_balanced["label"].value_counts())
+        with col2:
+            st.subheader("Distribusi Label Setelah Balancing:")
+            with card_container(key="Balancing"):
+                st.subheader("Distribusi Label Setelah Balancing:")
+                # st.write(df_balanced["label"].value_counts())
+                st.bar_chart(df_balanced["label"].value_counts())
 
         vectorizer = TfidfVectorizer()
         X = vectorizer.fit_transform(df_balanced["teks_bersih"])
         y = df_balanced["label"]
 
-        st.subheader("Contoh TF-IDF:")
+        st.subheader("Proses TF-IDF:")
         tfidf_df = pd.DataFrame(X.toarray(), columns=vectorizer.get_feature_names_out())
         st.write(tfidf_df.head())
 
@@ -142,27 +150,69 @@ if uploaded_file:
         y_pred = model.predict(X_test)
 
         st.subheader("Evaluasi Model:")
-        st.write(f"Akurasi: {accuracy_score(y_test, y_pred):.2f}")
-        st.text("Classification Report:")
-        st.text(classification_report(y_test, y_pred))
+
+        # Hitung metrik utama
+        akurasi = accuracy_score(y_test, y_pred)
+        presisi = precision_score(y_test, y_pred, average='macro')
+        recall = recall_score(y_test, y_pred, average='macro')
+        f1 = f1_score(y_test, y_pred, average='macro')
+
+        # Tampilkan dengan 3 kolom
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            st.metric("Akurasi", f"{akurasi:.2f}")
+        with col2:
+            st.metric("Presisi", f"{presisi:.2f}")
+        with col3:
+            st.metric("Recall", f"{recall:.2f}")
+        with col4:
+            st.metric("F1-Score", f"{f1:.2f}")
+
+        # st.text("Classification Report:")
+        # st.text(classification_report(y_test, y_pred))
 
         # Confusion Matrix
-        st.subheader("Confusion Matrix:")
-        cm = confusion_matrix(y_test, y_pred, labels=model.classes_)
-        fig_cm, ax_cm = plt.subplots()
-        sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', xticklabels=model.classes_, yticklabels=model.classes_, ax=ax_cm)
-        ax_cm.set_xlabel("Predicted")
-        ax_cm.set_ylabel("Actual")
-        st.pyplot(fig_cm)
+        col1, col2 = st.columns(2)
+        with col1:
+            st.subheader("Confusion Matrix:")
+            with card_container(key="Confusion Matrix"):
+                st.subheader("Confusion Matrix:")
+                cm = confusion_matrix(y_test, y_pred, labels=model.classes_)
+                fig_cm, ax_cm = plt.subplots()
+                sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', xticklabels=model.classes_, yticklabels=model.classes_, ax=ax_cm)
+                ax_cm.set_xlabel("Predicted")
+                ax_cm.set_ylabel("Actual")
+                st.pyplot(fig_cm)
+        with col2:
+            st.subheader("Grafik Penyebaran Data (Label Aktual vs Prediksi)")
+            with card_container(key="Data Distribution"):
+                st.subheader("Grafik Penyebaran Data (Label Aktual vs Prediksi)")
+                df_dist = pd.DataFrame({
+                    "Label Aktual": y_test,
+                    "Label Prediksi": y_pred
+                })
+
+            # Plot side-by-side bar (countplot aktual & prediksi)
+                fig_dist, ax_dist = plt.subplots(figsize=(4,3))
+            # Bar untuk label aktual
+                sns.countplot(x="Label Aktual", data=df_dist, ax=ax_dist, palette="crest", alpha=0.7, label="Aktual")
+            # Bar untuk label prediksi di atasnya (warna lain)
+                sns.countplot(x="Label Prediksi", data=df_dist, ax=ax_dist, palette="pastel", alpha=0.5, label="Prediksi")
+
+                ax_dist.legend(["Aktual", "Prediksi"])
+                ax_dist.set_title("Sebaran Label Aktual vs Prediksi")
+                st.pyplot(fig_dist)
 
         # WordCloud Global
         st.subheader("WordCloud Keseluruhan:")
-        all_text = " ".join(df["teks_bersih"])
-        wordcloud = WordCloud(width=800, height=400, background_color='white').generate(all_text)
-        fig_wc, ax_wc = plt.subplots()
-        ax_wc.imshow(wordcloud, interpolation='bilinear')
-        ax_wc.axis("off")
-        st.pyplot(fig_wc)
+        with card_container(key="WordCloud"):
+            st.subheader("WordCloud Keseluruhan:")
+            all_text = " ".join(df["teks_bersih"])
+            wordcloud = WordCloud(width=800, height=400, background_color='white').generate(all_text)
+            fig_wc, ax_wc = plt.subplots()
+            ax_wc.imshow(wordcloud, interpolation='bilinear')
+            ax_wc.axis("off")
+            st.pyplot(fig_wc)
 
         # # WordCloud per Label
         # st.subheader("WordCloud per Label:")
